@@ -150,9 +150,26 @@ function App() {
     try {
       setLoading(true);
       setError(null);
-      const data = await ApiService.getList();
-      // Ensure we have an array and reverse it to show newest first
-      setItems(Array.isArray(data) ? [...data].reverse() : []); 
+      
+      // 1. 获取后端响应
+      const response: any = await ApiService.getList();
+      
+      console.log("后端返回的数据:", response); // 方便在控制台调试
+
+      // 2. 【关键修改】提取内部的 data 字段
+      // 如果 response 本身是数组(兼容旧代码)，用 response
+      // 如果 response.data 是数组(你的现状)，用 response.data
+      let actualData = [];
+      
+      if (Array.isArray(response)) {
+          actualData = response;
+      } else if (response && Array.isArray(response.data)) {
+          actualData = response.data;
+      }
+
+      // 3. 设置数据
+      setItems(actualData.reverse()); 
+      
     } catch (error) {
       console.error(error);
       setError("Unable to connect to server.");
