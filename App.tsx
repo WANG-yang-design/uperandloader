@@ -24,6 +24,102 @@ import {
   X
 } from 'lucide-react';
 
+// --- Sub-components moved outside ---
+
+interface SectionHeaderProps {
+  title: string;
+  icon: any;
+  category: FileCategory;
+  count: number;
+  setActiveCategory: (cat: FileCategory) => void;
+}
+
+const SectionHeader: React.FC<SectionHeaderProps> = ({ title, icon: Icon, category, count, setActiveCategory }) => (
+  <div className="flex items-center justify-between mb-4 mt-8 first:mt-0">
+    <div className="flex items-center gap-2">
+      <div className="p-2 bg-white/5 rounded-lg">
+        <Icon className="w-5 h-5 text-primary" />
+      </div>
+      <h2 className="text-lg font-semibold text-white">{title}</h2>
+      <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-white/10 text-zinc-400">{count}</span>
+    </div>
+    <button 
+      onClick={() => setActiveCategory(category)}
+      className="text-xs font-medium text-zinc-400 hover:text-white flex items-center gap-1 transition-colors"
+    >
+      View All <ChevronRight className="w-3 h-3" />
+    </button>
+  </div>
+);
+
+interface FileCardProps {
+  item: FileItem;
+  viewMode: 'grid' | 'list';
+  activeCategory: FileCategory;
+  onSelect: (item: FileItem) => void;
+}
+
+const FileCard: React.FC<FileCardProps> = ({ item, viewMode, activeCategory, onSelect }) => {
+  const category = getCategoryFromMime(item.filetype);
+  const CategoryIcon = getIconForCategory(category);
+  
+  // List view logic: Show list row if in list mode AND looking at a specific category (not dashboard)
+  if (viewMode === 'list' && activeCategory !== FileCategory.ALL) {
+    return (
+       <div 
+        onClick={() => onSelect(item)}
+        className="group flex items-center gap-4 p-4 bg-surface hover:bg-white/5 border border-white/5 rounded-xl cursor-pointer transition-colors"
+       >
+         <div className="w-10 h-10 rounded-lg bg-zinc-800 flex items-center justify-center shrink-0">
+           <CategoryIcon className="w-5 h-5 text-zinc-400 group-hover:text-white" />
+         </div>
+         <div className="flex-1 min-w-0">
+           <h4 className="text-sm font-medium text-white truncate group-hover:text-primary transition-colors">{item.text || item.id}</h4>
+           <p className="text-xs text-zinc-500 truncate">{item.filetype || 'Unknown Type'}</p>
+         </div>
+         <button className="p-2 text-zinc-500 hover:text-white hover:bg-white/10 rounded-full">
+           <PlayCircle className="w-5 h-5" />
+         </button>
+       </div>
+    );
+  }
+
+  // Grid view logic (Default)
+  return (
+    <div 
+      onClick={() => onSelect(item)}
+      className="group relative aspect-square bg-surface border border-white/5 rounded-xl overflow-hidden cursor-pointer hover:border-primary/50 transition-all hover:shadow-xl hover:shadow-black/50"
+    >
+      <div className="absolute inset-0 flex items-center justify-center bg-zinc-900/50">
+         {category === FileCategory.IMAGE ? (
+           <img 
+            src={ApiService.getDownloadUrl(item.id)} 
+            alt={item.text}
+            loading="lazy"
+            className="w-full h-full object-cover opacity-90 group-hover:opacity-100 group-hover:scale-105 transition-all duration-500"
+            onError={(e) => { e.currentTarget.style.display = 'none'; }}
+           />
+         ) : (
+            <div className="flex flex-col items-center gap-2 text-zinc-500 group-hover:text-white transition-colors">
+               <CategoryIcon className="w-10 h-10" />
+            </div>
+         )}
+         <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-3 backdrop-blur-sm">
+            <span className="p-3 bg-white/10 rounded-full text-white">
+               {category === FileCategory.DOCUMENT ? <Download className="w-5 h-5"/> : <PlayCircle className="w-6 h-6" />}
+            </span>
+         </div>
+      </div>
+      <div className="absolute bottom-0 left-0 right-0 p-3 bg-gradient-to-t from-black/90 to-transparent">
+        <p className="text-xs font-medium text-white truncate">{item.text || 'Untitled'}</p>
+        <p className="text-[10px] text-zinc-400 truncate mt-0.5 uppercase tracking-wider">{item.filetype || category}</p>
+      </div>
+    </div>
+  );
+};
+
+// --- Main App Component ---
+
 function App() {
   const [items, setItems] = useState<FileItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -132,81 +228,6 @@ function App() {
     }
     return targetList;
   }, [activeCategory, groupedItems, searchQuery]);
-
-  const SectionHeader = ({ title, icon: Icon, category, count }: { title: string, icon: any, category: FileCategory, count: number }) => (
-    <div className="flex items-center justify-between mb-4 mt-8 first:mt-0">
-      <div className="flex items-center gap-2">
-        <div className="p-2 bg-white/5 rounded-lg">
-          <Icon className="w-5 h-5 text-primary" />
-        </div>
-        <h2 className="text-lg font-semibold text-white">{title}</h2>
-        <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-white/10 text-zinc-400">{count}</span>
-      </div>
-      <button 
-        onClick={() => setActiveCategory(category)}
-        className="text-xs font-medium text-zinc-400 hover:text-white flex items-center gap-1 transition-colors"
-      >
-        View All <ChevronRight className="w-3 h-3" />
-      </button>
-    </div>
-  );
-
-  const FileCard: React.FC<{ item: FileItem }> = ({ item }) => {
-    const category = getCategoryFromMime(item.filetype);
-    const CategoryIcon = getIconForCategory(category);
-    
-    if (viewMode === 'list' && activeCategory !== FileCategory.ALL) {
-      return (
-         <div 
-          onClick={() => setSelectedItem(item)}
-          className="group flex items-center gap-4 p-4 bg-surface hover:bg-white/5 border border-white/5 rounded-xl cursor-pointer transition-colors"
-         >
-           <div className="w-10 h-10 rounded-lg bg-zinc-800 flex items-center justify-center shrink-0">
-             <CategoryIcon className="w-5 h-5 text-zinc-400 group-hover:text-white" />
-           </div>
-           <div className="flex-1 min-w-0">
-             <h4 className="text-sm font-medium text-white truncate group-hover:text-primary transition-colors">{item.text || item.id}</h4>
-             <p className="text-xs text-zinc-500 truncate">{item.filetype || 'Unknown Type'}</p>
-           </div>
-           <button className="p-2 text-zinc-500 hover:text-white hover:bg-white/10 rounded-full">
-             <PlayCircle className="w-5 h-5" />
-           </button>
-         </div>
-      );
-    }
-
-    return (
-      <div 
-        onClick={() => setSelectedItem(item)}
-        className="group relative aspect-square bg-surface border border-white/5 rounded-xl overflow-hidden cursor-pointer hover:border-primary/50 transition-all hover:shadow-xl hover:shadow-black/50"
-      >
-        <div className="absolute inset-0 flex items-center justify-center bg-zinc-900/50">
-           {category === FileCategory.IMAGE ? (
-             <img 
-              src={ApiService.getDownloadUrl(item.id)} 
-              alt={item.text}
-              loading="lazy"
-              className="w-full h-full object-cover opacity-90 group-hover:opacity-100 group-hover:scale-105 transition-all duration-500"
-              onError={(e) => { e.currentTarget.style.display = 'none'; }}
-             />
-           ) : (
-              <div className="flex flex-col items-center gap-2 text-zinc-500 group-hover:text-white transition-colors">
-                 <CategoryIcon className="w-10 h-10" />
-              </div>
-           )}
-           <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-3 backdrop-blur-sm">
-              <span className="p-3 bg-white/10 rounded-full text-white">
-                 {category === FileCategory.DOCUMENT ? <Download className="w-5 h-5"/> : <PlayCircle className="w-6 h-6" />}
-              </span>
-           </div>
-        </div>
-        <div className="absolute bottom-0 left-0 right-0 p-3 bg-gradient-to-t from-black/90 to-transparent">
-          <p className="text-xs font-medium text-white truncate">{item.text || 'Untitled'}</p>
-          <p className="text-[10px] text-zinc-400 truncate mt-0.5 uppercase tracking-wider">{item.filetype || category}</p>
-        </div>
-      </div>
-    );
-  };
 
   const navCategories = [
     { id: FileCategory.ALL, label: 'Dashboard' },
@@ -370,36 +391,68 @@ function App() {
           <div className="space-y-8 animate-in fade-in duration-500">
              {groupedItems.documents.length > 0 && (
                 <section>
-                  <SectionHeader title="Recent Documents" icon={FileText} category={FileCategory.DOCUMENT} count={groupedItems.documents.length} />
+                  <SectionHeader title="Recent Documents" icon={FileText} category={FileCategory.DOCUMENT} count={groupedItems.documents.length} setActiveCategory={setActiveCategory} />
                   <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-4">
-                    {groupedItems.documents.slice(0, 5).map(item => <FileCard key={item.id} item={item} />)}
+                    {groupedItems.documents.slice(0, 5).map(item => (
+                      <FileCard 
+                        key={item.id} 
+                        item={item} 
+                        viewMode={viewMode}
+                        activeCategory={activeCategory}
+                        onSelect={setSelectedItem}
+                      />
+                    ))}
                   </div>
                 </section>
              )}
 
              {groupedItems.images.length > 0 && (
                 <section>
-                  <SectionHeader title="Recent Images" icon={ImageIcon} category={FileCategory.IMAGE} count={groupedItems.images.length} />
+                  <SectionHeader title="Recent Images" icon={ImageIcon} category={FileCategory.IMAGE} count={groupedItems.images.length} setActiveCategory={setActiveCategory} />
                   <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-4">
-                    {groupedItems.images.slice(0, 5).map(item => <FileCard key={item.id} item={item} />)}
+                    {groupedItems.images.slice(0, 5).map(item => (
+                      <FileCard 
+                        key={item.id} 
+                        item={item} 
+                        viewMode={viewMode}
+                        activeCategory={activeCategory}
+                        onSelect={setSelectedItem}
+                      />
+                    ))}
                   </div>
                 </section>
              )}
 
              {groupedItems.videos.length > 0 && (
                 <section>
-                  <SectionHeader title="Recent Videos" icon={Video} category={FileCategory.VIDEO} count={groupedItems.videos.length} />
+                  <SectionHeader title="Recent Videos" icon={Video} category={FileCategory.VIDEO} count={groupedItems.videos.length} setActiveCategory={setActiveCategory} />
                   <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-4">
-                    {groupedItems.videos.slice(0, 5).map(item => <FileCard key={item.id} item={item} />)}
+                    {groupedItems.videos.slice(0, 5).map(item => (
+                      <FileCard 
+                        key={item.id} 
+                        item={item} 
+                        viewMode={viewMode}
+                        activeCategory={activeCategory}
+                        onSelect={setSelectedItem}
+                      />
+                    ))}
                   </div>
                 </section>
              )}
 
             {groupedItems.audio.length > 0 && (
                 <section>
-                  <SectionHeader title="Recent Audio" icon={Music} category={FileCategory.AUDIO} count={groupedItems.audio.length} />
+                  <SectionHeader title="Recent Audio" icon={Music} category={FileCategory.AUDIO} count={groupedItems.audio.length} setActiveCategory={setActiveCategory} />
                   <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-4">
-                    {groupedItems.audio.slice(0, 5).map(item => <FileCard key={item.id} item={item} />)}
+                    {groupedItems.audio.slice(0, 5).map(item => (
+                      <FileCard 
+                        key={item.id} 
+                        item={item} 
+                        viewMode={viewMode}
+                        activeCategory={activeCategory}
+                        onSelect={setSelectedItem}
+                      />
+                    ))}
                   </div>
                 </section>
              )}
@@ -412,7 +465,13 @@ function App() {
           // CATEGORY VIEW (All items in category)
           <div className={`animate-in fade-in duration-300 ${viewMode === 'grid' ? "grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4" : "flex flex-col gap-2"}`}>
             {displayItems.length > 0 ? displayItems.map(item => (
-              <FileCard key={item.id} item={item} />
+              <FileCard 
+                key={item.id} 
+                item={item} 
+                viewMode={viewMode}
+                activeCategory={activeCategory}
+                onSelect={setSelectedItem}
+              />
             )) : (
               <div className="col-span-full py-20 text-center text-zinc-500">
                  <p>No files found in this category.</p>

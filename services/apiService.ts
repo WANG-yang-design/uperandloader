@@ -1,4 +1,3 @@
-
 import { API_BASE_URL as DEFAULT_API_URL, ApiResponse, FileItem } from '../types';
 
 const STORAGE_KEY = 'omnicloud_api_url';
