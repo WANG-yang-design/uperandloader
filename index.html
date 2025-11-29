@@ -56,6 +56,10 @@
         color: #71717a;
       }
     </style>
+    <!-- 使用标准的React CDN链接 -->
+    <script src="https://unpkg.com/react@18/umd/react.development.js" crossorigin></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js" crossorigin></script>
+    <script src="https://unpkg.com/lucide-react@0.555.0/dist/umd/lucide-react.min.js"></script>
   <script type="importmap">
 {
   "imports": {
@@ -78,18 +82,32 @@
       </div>
     </div>
     <script>
-      // Global error handler for startup crashes
+      // 增加资源加载错误监听
       window.addEventListener('error', function(event) {
-        const root = document.getElementById('root');
-        // Only show error if the app is still in the loading state (React hasn't taken over)
-        if (root && root.innerHTML.includes('Loading OmniCloud')) {
-          root.innerHTML = '<div style="height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;color:#ef4444;background:#09090b;text-align:center;padding:20px;">' +
-            '<h2 style="font-size:1.5rem;font-weight:bold;margin-bottom:10px;">Startup Error</h2>' +
-            '<p style="color:#a1a1aa;margin-bottom:20px;">' + event.message + '</p>' +
-            '<button onclick="localStorage.clear();window.location.reload()" style="padding:10px 20px;background:#3f3f46;color:white;border:none;border-radius:6px;cursor:pointer;">Reset & Reload</button>' +
-            '</div>';
+        if (event.target.tagName === 'SCRIPT') {
+          console.error('Script failed to load:', event.target.src);
+          showError(`Failed to load required resource: ${event.target.src}`);
         }
       });
+
+      // 全局错误处理
+      window.addEventListener('error', function(event) {
+        const root = document.getElementById('root');
+        if (root && root.innerHTML.includes('Loading OmniCloud')) {
+          showError(event.message);
+        }
+      });
+
+      function showError(message) {
+        const root = document.getElementById('root');
+        root.innerHTML = '<div style="height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;color:#ef4444;background:#09090b;text-align:center;padding:20px;">' +
+          '<h2 style="font-size:1.5rem;font-weight:bold;margin-bottom:10px;">Startup Error</h2>' +
+          '<p style="color:#a1a1aa;margin-bottom:20px;">' + message + '</p>' +
+          '<button onclick="localStorage.clear();window.location.reload()" style="padding:10px 20px;background:#3f3f46;color:white;border:none;border-radius:6px;cursor:pointer;">Reset & Reload</button>' +
+          '</div>';
+      }
     </script>
+    <!-- 确保这里有你的应用初始化脚本 -->
+    <script type="module" src="./index.tsx"></script>
   </body>
 </html>
