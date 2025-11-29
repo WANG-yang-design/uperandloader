@@ -28,8 +28,10 @@ export const ApiService = {
       console.log(`Fetching list from: ${baseUrl}/list`);
       const response = await fetch(`${baseUrl}/list`, {
         method: 'GET',
-        // 'cors' mode is default, but explicit helps debugging
-        mode: 'cors', 
+        headers: {
+          'ngrok-skip-browser-warning': 'true',
+          'Bypass-Tunnel-Reminder': 'true',
+        },
       });
       
       if (!response.ok) {
@@ -43,7 +45,7 @@ export const ApiService = {
         return json.data;
       } else {
         console.warn("API returned invalid data format", json);
-        return []; // Return empty array instead of crashing
+        return []; 
       }
     } catch (error) {
       console.error("API Error (getList):", error);
@@ -52,40 +54,115 @@ export const ApiService = {
   },
 
   /**
-   * Upload a file
+   * Upload a file with Progress Tracking (XHR)
    */
-  uploadFile: async (file: File, text?: string): Promise<any> => {
-    const baseUrl = ApiService.getBaseUrl();
-    const formData = new FormData();
-    formData.append('file', file);
-    if (text) {
-      formData.append('text', text);
-    }
-
-    try {
-      const response = await fetch(`${baseUrl}/upload`, {
-        method: 'POST',
-        body: formData,
-        mode: 'cors',
-      });
-
-      if (!response.ok) {
-        throw new Error(`Upload failed: ${response.status}`);
+  uploadFileWithProgress: (
+    file: File, 
+    text: string | undefined, 
+    onProgress: (percent: number) => void
+  ): Promise<any> => {
+    return new Promise((resolve, reject) => {
+      const baseUrl = ApiService.getBaseUrl();
+      const formData = new FormData();
+      formData.append('file', file);
+      if (text) {
+        formData.append('text', text);
       }
 
-      const json: ApiResponse<any> = await response.json();
-      return json;
-    } catch (error) {
-      console.error("API Error (uploadFile):", error);
-      throw error;
-    }
+      const xhr = new XMLHttpRequest();
+      xhr.open('POST', `${baseUrl}/upload`, true);
+
+      // Add Tunnel Bypass headers
+      xhr.setRequestHeader('ngrok-skip-browser-warning', 'true');
+      xhr.setRequestHeader('Bypass-Tunnel-Reminder', 'true');
+
+      // Upload progress listener
+      xhr.upload.onprogress = (event) => {
+        if (event.lengthComputable) {
+          const percentComplete = (event.loaded / event.total) * 100;
+          onProgress(percentComplete);
+        }
+      };
+
+      xhr.onload = () => {
+        if (xhr.status >= 200 && xhr.status < 300) {
+          try {
+            const response = JSON.parse(xhr.responseText);
+            resolve(response);
+          } catch (e) {
+            reject(new Error("Invalid JSON response"));
+          }
+        } else {
+          reject(new Error(`Upload failed with status: ${xhr.status}`));
+        }
+      };
+
+      xhr.onerror = () => {
+        reject(new Error("Network Error during upload"));
+      };
+
+      xhr.send(formData);
+    });
   },
 
   /**
-   * Get direct download/preview URL
+   * Get direct download/preview URL string
    */
   getDownloadUrl: (id: string): string => {
     const baseUrl = ApiService.getBaseUrl();
     return `${baseUrl}/download/${id}`;
+  },
+
+  /**
+   * Force download a file with Progress Tracking
+   */
+  downloadWithProgress: (
+    id: string, 
+    filename: string,
+    onProgress: (percent: number) => void
+  ): Promise<void> => {
+    return new Promise((resolve, reject) => {
+      const baseUrl = ApiService.getBaseUrl();
+      const url = `${baseUrl}/download/${id}`;
+      
+      const xhr = new XMLHttpRequest();
+      xhr.open('GET', url, true);
+      xhr.responseType = 'blob';
+
+      // Add Tunnel Bypass headers
+      xhr.setRequestHeader('ngrok-skip-browser-warning', 'true');
+      xhr.setRequestHeader('Bypass-Tunnel-Reminder', 'true');
+
+      // Download progress listener
+      xhr.onprogress = (event) => {
+        if (event.lengthComputable) {
+          const percentComplete = (event.loaded / event.total) * 100;
+          onProgress(percentComplete);
+        }
+      };
+
+      xhr.onload = () => {
+        if (xhr.status === 200) {
+          const blob = xhr.response;
+          const downloadUrl = window.URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = downloadUrl;
+          a.download = filename;
+          document.body.appendChild(a);
+          a.click();
+          a.remove();
+          window.URL.revokeObjectURL(downloadUrl);
+          resolve();
+        } else {
+          reject(new Error("Download failed"));
+        }
+      };
+
+      xhr.onerror = () => {
+        reject(new Error("Network error during download"));
+      };
+
+      xhr.send();
+    });
   }
 };

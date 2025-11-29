@@ -1,13 +1,12 @@
-
 import React, { useRef, useState, useEffect } from 'react';
-import { X, Download, Play, Pause, Volume2, VolumeX } from 'lucide-react';
+import { X, Download, Play, Pause, Volume2, VolumeX, Loader2, FileText } from 'lucide-react';
 import { FileItem, FileCategory } from '../types';
 import { ApiService } from '../services/apiService';
 import { getCategoryFromMime } from '../utils/fileUtils';
 
 interface MediaPreviewProps {
   item: FileItem | null;
-  externalUrl?: string | null; // For direct URL playing
+  externalUrl?: string | null; 
   onClose: () => void;
 }
 
@@ -19,6 +18,10 @@ export const MediaPreview: React.FC<MediaPreviewProps> = ({ item, externalUrl, o
   const [isMuted, setIsMuted] = useState(false);
   const [playbackRate, setPlaybackRate] = useState(1.0);
   
+  // Download state
+  const [isDownloading, setIsDownloading] = useState(false);
+  const [downloadProgress, setDownloadProgress] = useState(0);
+  
   // Seeker State
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
@@ -28,11 +31,12 @@ export const MediaPreview: React.FC<MediaPreviewProps> = ({ item, externalUrl, o
   const title = externalUrl ? 'Network Stream' : (item?.text || 'Untitled');
 
   useEffect(() => {
-    // Reset state when source changes
     setIsPlaying(false);
     setPlaybackRate(1.0);
     setCurrentTime(0);
     setDuration(0);
+    setIsDownloading(false);
+    setDownloadProgress(0);
   }, [sourceUrl]);
 
   if (!item && !externalUrl) return null;
@@ -74,12 +78,39 @@ export const MediaPreview: React.FC<MediaPreviewProps> = ({ item, externalUrl, o
     return `${minutes}:${seconds < 10 ? '0' : ''}${seconds}`;
   };
 
+  const handleDownload = async () => {
+    if (!item) return;
+    setIsDownloading(true);
+    setDownloadProgress(0);
+    try {
+      const filename = item.text || `download.${item.filetype?.split('/')[1] || 'file'}`;
+      await ApiService.downloadWithProgress(item.id, filename, (percent) => {
+        setDownloadProgress(percent);
+      });
+    } catch (e) {
+      console.error(e);
+      alert("Download failed.");
+    } finally {
+      setIsDownloading(false);
+      setDownloadProgress(0);
+    }
+  };
+
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/95 backdrop-blur-sm animate-in fade-in duration-200">
       <div className="relative w-full max-w-6xl h-full md:h-[90vh] flex flex-col md:flex-row bg-surface rounded-none md:rounded-2xl overflow-hidden shadow-2xl border border-white/10">
         
         {/* Main Content Area */}
         <div className="flex-1 flex items-center justify-center bg-black relative overflow-hidden group">
+          
+          {/* Floating Close Button for Mobile / Backup */}
+          <button 
+            onClick={onClose} 
+            className="absolute top-4 right-4 z-50 p-2 bg-black/50 hover:bg-black/70 rounded-full text-white/70 hover:text-white md:hidden backdrop-blur-md border border-white/10"
+          >
+            <X className="w-5 h-5" />
+          </button>
+
           {category === FileCategory.IMAGE && (
             <img 
               src={sourceUrl} 
@@ -95,12 +126,12 @@ export const MediaPreview: React.FC<MediaPreviewProps> = ({ item, externalUrl, o
                 src={sourceUrl}
                 className="max-w-full max-h-full"
                 controls={false}
+                preload="metadata" // CRITICAL FIX: Only load metadata initially, not the whole file
                 onClick={handleTogglePlay}
                 onEnded={() => setIsPlaying(false)}
                 onTimeUpdate={handleTimeUpdate}
                 onLoadedMetadata={handleTimeUpdate}
               />
-              {/* Custom Play Overlay */}
               {!isPlaying && (
                 <button 
                   onClick={handleTogglePlay}
@@ -130,38 +161,45 @@ export const MediaPreview: React.FC<MediaPreviewProps> = ({ item, externalUrl, o
           )}
 
           {category === FileCategory.DOCUMENT && (
-            <div className="text-center p-8">
-              <p className="text-zinc-400 mb-4">Preview not available for this document type.</p>
-              <a 
-                href={sourceUrl} 
-                target="_blank" 
-                rel="noreferrer"
-                className="px-6 py-3 bg-primary hover:bg-primaryHover text-white rounded-lg font-medium transition-colors inline-flex items-center gap-2"
+            <div className="text-center p-8 w-full max-w-md">
+              <FileText className="w-24 h-24 text-zinc-700 mx-auto mb-6" />
+              <p className="text-zinc-400 mb-6 text-lg">Preview not available for this document type.</p>
+              
+              <button 
+                onClick={handleDownload}
+                disabled={isDownloading}
+                className="w-full relative h-12 bg-primary hover:bg-primaryHover text-white rounded-lg font-medium transition-colors overflow-hidden flex items-center justify-center"
               >
-                <Download className="w-4 h-4" />
-                Download to View
-              </a>
+                {isDownloading && (
+                  <div 
+                    className="absolute inset-0 bg-white/20 transition-all duration-200"
+                    style={{ width: `${downloadProgress}%` }}
+                  />
+                )}
+                <div className="relative flex items-center gap-2">
+                  {isDownloading ? <Loader2 className="w-4 h-4 animate-spin"/> : <Download className="w-4 h-4" />}
+                  {isDownloading ? `Downloading ${Math.round(downloadProgress)}%` : 'Download File'}
+                </div>
+              </button>
             </div>
           )}
         </div>
 
         {/* Sidebar / Controls */}
         <div className="w-full md:w-80 bg-surfaceHighlight border-l border-white/5 flex flex-col">
-           <div className="p-6 border-b border-white/5 flex items-start justify-between shrink-0">
-              <div>
-                <h3 className="font-semibold text-white line-clamp-2">{title}</h3>
+           {/* Fixed Header Layout */}
+           <div className="p-6 border-b border-white/5 flex items-start justify-between gap-4 shrink-0 bg-surfaceHighlight z-20 relative">
+              <div className="min-w-0 flex-1">
+                <h3 className="font-semibold text-white line-clamp-2 break-words" title={title}>{title}</h3>
                 <p className="text-xs text-zinc-400 mt-1 uppercase tracking-wider font-bold">{category}</p>
               </div>
-              <button onClick={onClose} className="p-2 hover:bg-white/10 rounded-full transition-colors">
+              <button onClick={onClose} className="shrink-0 p-2 hover:bg-white/10 rounded-full transition-colors hidden md:block">
                 <X className="w-5 h-5 text-zinc-400 hover:text-white" />
               </button>
            </div>
 
-           {/* Player Controls */}
            {(category === FileCategory.VIDEO || category === FileCategory.AUDIO) && (
              <div className="p-6 flex flex-col gap-6 overflow-y-auto">
-                
-                {/* Progress Bar */}
                 <div className="space-y-2">
                    <div className="flex justify-between text-xs text-zinc-400 font-medium font-mono">
                       <span>{formatTime(currentTime)}</span>
@@ -177,7 +215,6 @@ export const MediaPreview: React.FC<MediaPreviewProps> = ({ item, externalUrl, o
                    />
                 </div>
 
-                {/* Playback Actions */}
                 <div className="flex items-center justify-center gap-4">
                   <button 
                     onClick={handleTogglePlay}
@@ -187,7 +224,6 @@ export const MediaPreview: React.FC<MediaPreviewProps> = ({ item, externalUrl, o
                   </button>
                 </div>
 
-                {/* Speed Control */}
                 <div className="space-y-2">
                    <label className="text-xs font-medium text-zinc-500 uppercase">Playback Speed</label>
                    <div className="grid grid-cols-4 gap-2">
@@ -203,7 +239,6 @@ export const MediaPreview: React.FC<MediaPreviewProps> = ({ item, externalUrl, o
                    </div>
                 </div>
 
-                {/* Volume */}
                 <div className="flex items-center justify-between bg-black/20 p-3 rounded-lg border border-white/5">
                     <div className="flex items-center gap-3">
                       {isMuted ? <VolumeX className="w-4 h-4 text-zinc-500" /> : <Volume2 className="w-4 h-4 text-zinc-300" />}
@@ -224,16 +259,25 @@ export const MediaPreview: React.FC<MediaPreviewProps> = ({ item, externalUrl, o
              </div>
            )}
 
-           {/* Actions */}
            <div className="mt-auto p-6 border-t border-white/5 space-y-3 shrink-0">
-             <a 
-               href={sourceUrl}
-               download
-               className="flex items-center justify-center gap-2 w-full py-3 bg-zinc-800 hover:bg-zinc-700 text-white rounded-lg text-sm font-medium transition-colors border border-white/5 hover:border-white/10"
-             >
-               <Download className="w-4 h-4" />
-               Download File
-             </a>
+             {item && category !== FileCategory.DOCUMENT && (
+               <button 
+                onClick={handleDownload}
+                disabled={isDownloading}
+                className="relative flex items-center justify-center gap-2 w-full py-3 bg-zinc-800 hover:bg-zinc-700 text-white rounded-lg text-sm font-medium transition-colors border border-white/5 hover:border-white/10 disabled:opacity-50 disabled:cursor-wait overflow-hidden"
+               >
+                 {isDownloading && (
+                  <div 
+                    className="absolute inset-0 bg-white/10 transition-all duration-200"
+                    style={{ width: `${downloadProgress}%` }}
+                  />
+                 )}
+                 <div className="relative flex items-center gap-2">
+                    {isDownloading ? <Loader2 className="w-4 h-4 animate-spin"/> : <Download className="w-4 h-4" />}
+                    {isDownloading ? `${Math.round(downloadProgress)}%` : 'Download File'}
+                 </div>
+               </button>
+             )}
            </div>
         </div>
       </div>

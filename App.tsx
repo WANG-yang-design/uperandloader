@@ -21,7 +21,9 @@ import {
   Music,
   Settings,
   Save,
-  X
+  X,
+  CheckCircle2,
+  Loader2
 } from 'lucide-react';
 
 // --- Sub-components (Outside App to prevent re-renders) ---
@@ -63,7 +65,7 @@ const FileCard: React.FC<FileCardProps> = ({ item, viewMode, activeCategory, onS
   const category = getCategoryFromMime(item.filetype);
   const CategoryIcon = getIconForCategory(category);
   
-  // List view logic: Show list row if in list mode AND looking at a specific category (not dashboard)
+  // List view logic
   if (viewMode === 'list' && activeCategory !== FileCategory.ALL) {
     return (
        <div 
@@ -91,6 +93,7 @@ const FileCard: React.FC<FileCardProps> = ({ item, viewMode, activeCategory, onS
       className="group relative aspect-square bg-surface border border-white/5 rounded-xl overflow-hidden cursor-pointer hover:border-primary/50 transition-all hover:shadow-xl hover:shadow-black/50"
     >
       <div className="absolute inset-0 flex items-center justify-center bg-zinc-900/50">
+         {/* Only render <img> if it is strictly an IMAGE. Do NOT try to render Video thumbnails from URL to save bandwidth */}
          {category === FileCategory.IMAGE ? (
            <img 
             src={ApiService.getDownloadUrl(item.id)} 
@@ -99,11 +102,21 @@ const FileCard: React.FC<FileCardProps> = ({ item, viewMode, activeCategory, onS
             className="w-full h-full object-cover opacity-90 group-hover:opacity-100 group-hover:scale-105 transition-all duration-500"
             onError={(e) => { e.currentTarget.style.display = 'none'; }}
            />
+         ) : category === FileCategory.VIDEO ? (
+           // Dedicated Video Style that looks like a "Cover" without downloading the video
+           <div className="w-full h-full bg-gradient-to-br from-zinc-800 to-black flex flex-col items-center justify-center gap-2 group-hover:from-zinc-800 group-hover:to-zinc-900 transition-colors">
+              <div className="w-16 h-16 rounded-full bg-white/5 flex items-center justify-center border border-white/10 group-hover:scale-110 transition-transform shadow-xl">
+                 <Video className="w-8 h-8 text-zinc-400 group-hover:text-primary transition-colors" />
+              </div>
+           </div>
          ) : (
+            // Default Icon for Audio/Docs
             <div className="flex flex-col items-center gap-2 text-zinc-500 group-hover:text-white transition-colors">
                <CategoryIcon className="w-10 h-10" />
             </div>
          )}
+         
+         {/* Overlay Icon */}
          <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-3 backdrop-blur-sm">
             <span className="p-3 bg-white/10 rounded-full text-white">
                {category === FileCategory.DOCUMENT ? <Download className="w-5 h-5"/> : <PlayCircle className="w-6 h-6" />}
@@ -126,7 +139,7 @@ function App() {
   const [error, setError] = useState<string | null>(null);
   
   // Navigation State
-  const [activeCategory, setActiveCategory] = useState<FileCategory>(FileCategory.ALL); // ALL = Dashboard View
+  const [activeCategory, setActiveCategory] = useState<FileCategory>(FileCategory.ALL); 
   const [searchQuery, setSearchQuery] = useState('');
   
   // Media Player State
@@ -135,6 +148,7 @@ function App() {
   
   // Upload State
   const [isUploading, setIsUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
   const [uploadText, setUploadText] = useState('');
   
   // External Link State
@@ -184,14 +198,21 @@ function App() {
     if (!e.target.files || e.target.files.length === 0) return;
     
     setIsUploading(true);
+    setUploadProgress(0);
     const file = e.target.files[0];
     
     try {
       const description = uploadText.trim() || file.name;
-      await ApiService.uploadFile(file, description);
+      // Use the new progress-aware upload
+      await ApiService.uploadFileWithProgress(file, description, (percent) => {
+        setUploadProgress(percent);
+      });
+      
       setUploadText('');
+      setTimeout(() => setUploadProgress(0), 1000); // Reset progress after delay
       await fetchItems();
     } catch (error) {
+      console.error(error);
       alert("Upload failed. Please check the server connection.");
     } finally {
       setIsUploading(false);
@@ -204,7 +225,7 @@ function App() {
     setShowLinkInput(false);
   };
 
-  // Group items for the dashboard (Memoized for performance)
+  // Group items for the dashboard (Memoized)
   const groupedItems = useMemo(() => {
     const documents = [];
     const images = [];
@@ -225,7 +246,7 @@ function App() {
   // Determine what to display based on active category
   const displayItems = useMemo(() => {
     let targetList: FileItem[] = [];
-    if (activeCategory === FileCategory.ALL) return []; // Dashboard handles itself
+    if (activeCategory === FileCategory.ALL) return []; 
     
     if (activeCategory === FileCategory.DOCUMENT) targetList = groupedItems.documents;
     if (activeCategory === FileCategory.IMAGE) targetList = groupedItems.images;
@@ -248,10 +269,8 @@ function App() {
 
   return (
     <div className="min-h-screen bg-background pb-20">
-      {/* Enhanced Navbar with Refresh */}
       <NavBar isOnline={!error} onOpenSettings={() => setShowSettings(true)} />
 
-      {/* Manual Refresh Button (Portal-like placement) */}
       <div className="fixed top-3 right-16 z-[60] md:right-20">
         <button 
             onClick={fetchItems}
@@ -269,34 +288,57 @@ function App() {
           <div className="lg:col-span-2 bg-surface border border-white/5 rounded-2xl p-6 relative overflow-hidden group">
             <div className="absolute top-0 right-0 w-64 h-64 bg-primary/10 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2 pointer-events-none group-hover:bg-primary/20 transition-colors"></div>
             <h2 className="text-xl font-semibold mb-4 text-white">Upload Content</h2>
-            <div className="flex flex-col md:flex-row gap-4 relative z-10">
-              <input 
-                type="text" 
-                placeholder="Description (optional)..." 
-                value={uploadText}
-                onChange={(e) => setUploadText(e.target.value)}
-                className="bg-black/40 border border-white/10 rounded-lg px-4 py-3 text-sm focus:outline-none focus:border-primary/50 text-white flex-1 transition-all focus:bg-black/60"
-              />
-              <div className="relative">
-                 <input 
-                   type="file" 
-                   id="file-upload" 
-                   className="hidden" 
-                   onChange={handleUpload} 
-                   disabled={isUploading}
-                 />
-                 <label 
-                   htmlFor="file-upload"
-                   className={`flex items-center gap-2 px-6 py-3 rounded-lg font-medium cursor-pointer transition-all whitespace-nowrap ${isUploading ? 'bg-zinc-700 cursor-wait' : 'bg-primary hover:bg-primaryHover text-white shadow-lg shadow-primary/20 hover:scale-105 active:scale-95'}`}
-                 >
-                   {isUploading ? (
-                     <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                   ) : (
-                     <Upload className="w-5 h-5" />
-                   )}
-                   <span>{isUploading ? 'Uploading...' : 'Select File'}</span>
-                 </label>
-              </div>
+            <div className="flex flex-col gap-4 relative z-10">
+               <div className="flex flex-col md:flex-row gap-4">
+                  <input 
+                    type="text" 
+                    placeholder="Description (optional)..." 
+                    value={uploadText}
+                    onChange={(e) => setUploadText(e.target.value)}
+                    className="bg-black/40 border border-white/10 rounded-lg px-4 py-3 text-sm focus:outline-none focus:border-primary/50 text-white flex-1 transition-all focus:bg-black/60"
+                  />
+                  <div className="relative">
+                     <input 
+                       type="file" 
+                       id="file-upload" 
+                       className="hidden" 
+                       onChange={handleUpload} 
+                       disabled={isUploading}
+                     />
+                     <label 
+                       htmlFor="file-upload"
+                       className={`flex items-center gap-2 px-6 py-3 rounded-lg font-medium cursor-pointer transition-all whitespace-nowrap ${isUploading ? 'bg-zinc-700 cursor-wait' : 'bg-primary hover:bg-primaryHover text-white shadow-lg shadow-primary/20 hover:scale-105 active:scale-95'}`}
+                     >
+                       {isUploading ? (
+                         <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                       ) : (
+                         <Upload className="w-5 h-5" />
+                       )}
+                       <span>
+                          {isUploading 
+                            ? (uploadProgress >= 100 ? 'Processing...' : 'Uploading...') 
+                            : 'Select File'
+                          }
+                        </span>
+                     </label>
+                  </div>
+               </div>
+               
+               {/* Progress Bar */}
+               {isUploading && (
+                  <div className="space-y-1 animate-in fade-in slide-in-from-top-1">
+                    <div className="flex justify-between text-xs text-zinc-400 font-medium">
+                      <span>{uploadProgress >= 100 ? 'Finalizing on Server...' : 'Uploading...'}</span>
+                      <span>{Math.round(uploadProgress)}%</span>
+                    </div>
+                    <div className="w-full bg-zinc-800 h-1.5 rounded-full overflow-hidden">
+                       <div 
+                        className={`h-full transition-all duration-300 ease-out shadow-[0_0_10px_rgba(16,185,129,0.5)] ${uploadProgress >= 100 ? 'bg-primary animate-pulse' : 'bg-secondary'}`}
+                        style={{ width: `${uploadProgress}%` }} 
+                       />
+                    </div>
+                  </div>
+               )}
             </div>
           </div>
 
@@ -396,7 +438,7 @@ function App() {
             </div>
           </div>
         ) : activeCategory === FileCategory.ALL ? (
-          // DASHBOARD VIEW (Limited Items)
+          // DASHBOARD VIEW
           <div className="space-y-8 animate-in fade-in duration-500">
              {groupedItems.documents.length > 0 && (
                 <section>
@@ -414,53 +456,32 @@ function App() {
                   </div>
                 </section>
              )}
-
              {groupedItems.images.length > 0 && (
                 <section>
                   <SectionHeader title="Recent Images" icon={ImageIcon} category={FileCategory.IMAGE} count={groupedItems.images.length} setActiveCategory={setActiveCategory} />
                   <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-4">
                     {groupedItems.images.slice(0, 5).map(item => (
-                      <FileCard 
-                        key={item.id} 
-                        item={item} 
-                        viewMode={viewMode}
-                        activeCategory={activeCategory}
-                        onSelect={setSelectedItem}
-                      />
+                      <FileCard key={item.id} item={item} viewMode={viewMode} activeCategory={activeCategory} onSelect={setSelectedItem} />
                     ))}
                   </div>
                 </section>
              )}
-
              {groupedItems.videos.length > 0 && (
                 <section>
                   <SectionHeader title="Recent Videos" icon={Video} category={FileCategory.VIDEO} count={groupedItems.videos.length} setActiveCategory={setActiveCategory} />
                   <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-4">
                     {groupedItems.videos.slice(0, 5).map(item => (
-                      <FileCard 
-                        key={item.id} 
-                        item={item} 
-                        viewMode={viewMode}
-                        activeCategory={activeCategory}
-                        onSelect={setSelectedItem}
-                      />
+                      <FileCard key={item.id} item={item} viewMode={viewMode} activeCategory={activeCategory} onSelect={setSelectedItem} />
                     ))}
                   </div>
                 </section>
              )}
-
             {groupedItems.audio.length > 0 && (
                 <section>
                   <SectionHeader title="Recent Audio" icon={Music} category={FileCategory.AUDIO} count={groupedItems.audio.length} setActiveCategory={setActiveCategory} />
                   <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-4">
                     {groupedItems.audio.slice(0, 5).map(item => (
-                      <FileCard 
-                        key={item.id} 
-                        item={item} 
-                        viewMode={viewMode}
-                        activeCategory={activeCategory}
-                        onSelect={setSelectedItem}
-                      />
+                      <FileCard key={item.id} item={item} viewMode={viewMode} activeCategory={activeCategory} onSelect={setSelectedItem} />
                     ))}
                   </div>
                 </section>
@@ -471,16 +492,10 @@ function App() {
              )}
           </div>
         ) : (
-          // CATEGORY VIEW (All items in category)
+          // CATEGORY VIEW
           <div className={`animate-in fade-in duration-300 ${viewMode === 'grid' ? "grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4" : "flex flex-col gap-2"}`}>
             {displayItems.length > 0 ? displayItems.map(item => (
-              <FileCard 
-                key={item.id} 
-                item={item} 
-                viewMode={viewMode}
-                activeCategory={activeCategory}
-                onSelect={setSelectedItem}
-              />
+              <FileCard key={item.id} item={item} viewMode={viewMode} activeCategory={activeCategory} onSelect={setSelectedItem} />
             )) : (
               <div className="col-span-full py-20 text-center text-zinc-500">
                  <p>No files found in this category.</p>
@@ -500,7 +515,6 @@ function App() {
                   <X className="w-5 h-5" />
                 </button>
               </div>
-              
               <div className="space-y-4">
                  <div>
                    <label className="block text-sm font-medium text-zinc-400 mb-2">Backend API URL</label>
@@ -511,24 +525,11 @@ function App() {
                       placeholder="https://your-tunnel-url.com"
                       className="w-full bg-black/40 border border-white/10 rounded-lg px-4 py-3 text-white focus:outline-none focus:border-primary/50"
                    />
-                   <p className="text-xs text-zinc-500 mt-2">
-                     If you are using cpolar/ngrok, paste the new forwarding URL here when it changes.
-                   </p>
                  </div>
-                 
                  <div className="pt-4 flex justify-end gap-3">
-                    <button 
-                      onClick={() => setShowSettings(false)}
-                      className="px-4 py-2 text-zinc-400 hover:text-white font-medium"
-                    >
-                      Cancel
-                    </button>
-                    <button 
-                      onClick={handleSaveSettings}
-                      className="px-6 py-2 bg-primary hover:bg-primaryHover text-white rounded-lg font-medium flex items-center gap-2"
-                    >
-                      <Save className="w-4 h-4" />
-                      Save Configuration
+                    <button onClick={() => setShowSettings(false)} className="px-4 py-2 text-zinc-400 hover:text-white font-medium">Cancel</button>
+                    <button onClick={handleSaveSettings} className="px-6 py-2 bg-primary hover:bg-primaryHover text-white rounded-lg font-medium flex items-center gap-2">
+                      <Save className="w-4 h-4" /> Save Configuration
                     </button>
                  </div>
               </div>
